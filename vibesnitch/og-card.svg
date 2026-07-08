@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#12141C"/><stop offset="1" stop-color="#0C0E14"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="82%" cy="8%" r="55%">
+      <stop offset="0" stop-color="#FFD447" stop-opacity="0.14"/><stop offset="1" stop-color="#FFD447" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect width="1200" height="630" fill="url(#glow)"/>
+  <g font-family="'JetBrains Mono',monospace">
+    <text x="80" y="130" fill="#9AA0AF" font-size="26" letter-spacing="6">BLACK-BOX QA · SCANNED FROM OUTSIDE</text>
+  </g>
+  <text x="76" y="300" font-family="Georgia,'Instrument Serif',serif" font-size="112" fill="#ECE7DA">Your app is</text>
+  <text x="76" y="420" font-family="Georgia,'Instrument Serif',serif" font-size="112" font-style="italic" fill="#FFD447">hiding something.</text>
+  <g font-family="'Space Grotesk',sans-serif">
+    <text x="80" y="500" font-size="30" fill="#CFCABD">Paste a URL → get your Snitch Score + every leaked key, dead route</text>
+    <text x="80" y="540" font-size="30" fill="#CFCABD">and missing lock. Before a user does.</text>
+  </g>
+  <g transform="translate(80,575)" font-family="'JetBrains Mono',monospace">
+    <text x="0" y="0" font-size="30" font-weight="700" fill="#ECE7DA">Vibe<tspan fill="#FFD447">Snitch</tspan></text>
+  </g>
+  <g transform="translate(980,250)">
+    <circle cx="80" cy="80" r="80" fill="#FF5D5D"/>
+    <text x="80" y="126" text-anchor="middle" font-family="Georgia,serif" font-size="120" fill="#141414">F</text>
+    <text x="80" y="200" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="20" fill="#9AA0AF">leaked key = instant F</text>
+  </g>
+</svg>

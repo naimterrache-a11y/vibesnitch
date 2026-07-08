@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VibeSnitch — your app is hiding something</title>
+<meta name="description" content="Black-box QA for vibecoders. Paste a URL, get your app's Snitch Score, and see every leaked key, dead route and missing lock — before a user does.">
+<meta property="og:title" content="VibeSnitch — your app is hiding something">
+<meta property="og:description" content="Black-box QA for vibecoders. Get your app's Snitch Score in 30 seconds.">
+<meta property="og:type" content="website">
+<meta property="og:image" content="/og-card.svg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="VibeSnitch — your app is hiding something">
+<meta name="twitter:description" content="Get your app's Snitch Score. Every leaked key, dead route and missing lock.">
+<meta name="twitter:image" content="/og-card.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#101219; --ink-2:#171A24; --ink-3:#1F2431; --line:#2A2F3D;
+    --paper:#ECE7DA; --paper-2:#DED7C6; --paper-dim:#8C8879; --paper-ink:#20222B; --mute:#9AA0AF;
+    --hi:#FFD447; --crit:#FF5D5D; --high:#FF9F45; --med:#FFCF5C; --low:#7FB2FF; --ok:#57D9A3; --redact:#05060A;
+    --A:#57D9A3; --B:#8FD14F; --C:#FFCF5C; --D:#FF9F45; --F:#FF5D5D;
+    --serif:'Instrument Serif',Georgia,serif; --sans:'Space Grotesk',system-ui,sans-serif; --mono:'JetBrains Mono',ui-monospace,monospace;
+  }
+  *{box-sizing:border-box} html,body{margin:0}
+  body{background:var(--ink); color:var(--paper); font-family:var(--sans); font-size:16px; line-height:1.55; -webkit-font-smoothing:antialiased;
+    background-image:radial-gradient(1100px 500px at 80% -10%, rgba(255,212,71,.06), transparent 60%), repeating-linear-gradient(0deg, rgba(255,255,255,.014) 0 1px, transparent 1px 3px);}
+  a{color:inherit}
+  .wrap{max-width:960px; margin:0 auto; padding:0 22px}
+
+  .top{display:flex; align-items:center; justify-content:space-between; padding:22px 0 8px; gap:12px}
+  .brand{font-family:var(--mono); font-weight:700; letter-spacing:.02em; font-size:15px} .brand b{color:var(--hi)}
+  .gh{font-family:var(--mono); font-size:12px; color:var(--mute); text-decoration:none; border:1px solid var(--line); padding:6px 11px; border-radius:8px; white-space:nowrap}
+  .gh:hover{color:var(--paper); border-color:var(--hi)} .gh b{color:var(--hi)}
+
+  .hero{padding:38px 0 8px}
+  .eyebrow{font-family:var(--mono); font-size:12px; letter-spacing:.16em; text-transform:uppercase; color:var(--hi); display:flex; align-items:center; gap:9px}
+  .eyebrow::before{content:""; width:22px; height:1px; background:var(--hi)}
+  .headline{font-family:var(--serif); font-weight:400; font-size:clamp(46px,9vw,88px); line-height:.94; letter-spacing:-.01em; margin:16px 0 0}
+  .headline em{font-style:italic; color:var(--hi)}
+  .sub{max-width:640px; margin:20px 0 0; font-size:clamp(16px,2.4vw,19px); color:#CFCABD} .sub b{color:var(--paper); font-weight:600}
+
+  /* mode switch */
+  .modes{display:flex; gap:6px; margin:28px 0 0; background:var(--ink-2); border:1px solid var(--line); border-radius:12px; padding:5px; width:fit-content}
+  .mode{font-family:var(--sans); font-weight:600; font-size:14px; color:var(--mute); background:none; border:none; padding:10px 18px; border-radius:8px; cursor:pointer; display:flex; align-items:center; gap:7px}
+  .mode.active{background:var(--hi); color:#181400}
+  .mode .lock{font-size:13px}
+
+  .console{margin:14px 0 0; border:1px solid var(--line); background:linear-gradient(180deg,var(--ink-2),var(--ink)); border-radius:14px; padding:16px}
+  .console-lbl{font-family:var(--mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--mute); margin:2px 2px 12px; display:flex; justify-content:space-between}
+  .field{display:flex; gap:10px; flex-wrap:wrap}
+  .url-in{flex:1 1 340px; min-width:0; background:var(--ink); border:1px solid var(--line); color:var(--paper); font-family:var(--mono); font-size:15px; padding:15px 16px; border-radius:10px; outline:none; transition:border-color .15s}
+  .url-in::placeholder{color:#5C6172} .url-in:focus{border-color:var(--hi)}
+  .run{flex:0 0 auto; background:var(--hi); color:#181400; border:none; font-family:var(--sans); font-weight:700; font-size:15px; padding:15px 26px; border-radius:10px; cursor:pointer; transition:transform .08s, filter .15s}
+  .run:hover{filter:brightness(1.06)} .run:active{transform:translateY(1px)} .run:disabled{opacity:.5; cursor:default}
+
+  /* deep panel */
+  .deep{display:none; margin:14px 0 0; border-top:1px dashed var(--line); padding-top:14px; gap:10px; flex-wrap:wrap}
+  .deep.open{display:flex}
+  .deep-help{flex:1 1 100%; font-family:var(--sans); font-size:13px; color:var(--paper-dim); line-height:1.5} .deep-help b{color:#CFCABD} .mono-hint{font-family:var(--mono); color:var(--hi); font-size:12px}
+  .deep-in{flex:1 1 240px; background:var(--ink); border:1px solid var(--line); color:var(--paper); font-family:var(--mono); font-size:13px; padding:12px 14px; border-radius:9px; outline:none}
+  .deep-in:focus{border-color:var(--hi)} .deep-in.wide{flex:1 1 100%}
+  .note{font-family:var(--mono); font-size:11px; color:var(--mute); margin-top:12px}
+  .err{color:var(--crit); font-family:var(--mono); font-size:13px; margin:12px 2px 0; min-height:1em}
+
+  /* signature redaction */
+  .sig{margin:34px 0 6px} .sig-lbl{font-family:var(--mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--mute); margin-bottom:10px}
+  .dossier{position:relative; border:1px solid var(--line); border-radius:12px; background:repeating-linear-gradient(0deg, var(--ink-2) 0 27px, #14171F 27px 28px); padding:20px; overflow:hidden}
+  .stamp{position:absolute; top:14px; right:-6px; transform:rotate(7deg); font-family:var(--mono); font-weight:700; font-size:12px; letter-spacing:.1em; color:var(--crit); border:2px solid var(--crit); padding:5px 10px; border-radius:4px; opacity:0; transition:opacity .4s .9s}
+  .dossier.revealed .stamp{opacity:.92}
+  .doc-line{font-family:var(--mono); font-size:14px; color:#B9BECC; margin:2px 0} .doc-line .k{color:#7E93C9}
+  .redwrap{position:relative; display:inline-block; vertical-align:middle}
+  .secret{font-family:var(--mono); font-size:14px; color:var(--crit); background:rgba(255,93,93,.1); padding:1px 5px; border-radius:3px}
+  .redbar{position:absolute; inset:0; background:var(--redact); border-radius:3px; transform-origin:left; transition:transform .7s cubic-bezier(.7,0,.2,1)}
+  .dossier.revealed .redbar{transform:scaleX(0)}
+  .doc-cap{font-family:var(--sans); font-size:13px; color:var(--paper-dim); margin-top:14px} .doc-cap b{color:var(--hi)}
+
+  /* scanning theater */
+  .scanning{display:none; margin:28px 0 10px} .scanning.on{display:block}
+  .scan-head{font-family:var(--serif); font-size:34px; line-height:1.05}
+  .scan-target{font-family:var(--mono); font-size:13px; color:var(--hi); word-break:break-all; margin-top:4px}
+  .term{margin:20px 0 0; border:1px solid var(--line); border-radius:12px; background:#0C0E14; padding:18px 20px; min-height:260px; font-family:var(--mono); font-size:13.5px; line-height:1.9}
+  .term .ln{color:#C7CCDA; white-space:pre-wrap; word-break:break-word} .term .ln .ok{color:var(--ok)} .term .ln .hl{color:var(--hi)} .term .ln .dim{color:#5B6070}
+  .cursor{display:inline-block; width:8px; height:15px; background:var(--hi); margin-left:2px; vertical-align:middle; animation:blink 1s steps(1) infinite}
+  @keyframes blink{50%{opacity:0}}
+
+  /* report */
+  .report{display:none; margin:30px 0 0} .report.on{display:block}
+  .scorecard{background:var(--paper); color:var(--paper-ink); border-radius:14px 14px 0 0; border:1px solid var(--paper-2); border-bottom:none; padding:26px; display:flex; gap:24px; align-items:center; flex-wrap:wrap; position:relative}
+  .scorecard::before{content:"CONFIDENTIAL — VIBESNITCH DOSSIER"; position:absolute; top:12px; right:20px; font-family:var(--mono); font-size:10px; letter-spacing:.16em; color:var(--paper-dim)}
+  .disc{width:104px; height:104px; border-radius:50%; display:grid; place-items:center; flex:0 0 auto; color:#141414; font-family:var(--serif); font-size:60px; line-height:1; box-shadow:inset 0 0 0 4px rgba(0,0,0,.12); transform:scale(.6); opacity:0; transition:transform .5s cubic-bezier(.2,1.3,.4,1), opacity .4s}
+  .disc.in{transform:scale(1); opacity:1}
+  .score-meta{flex:1 1 260px}
+  .score-num{font-family:var(--mono); font-size:13px; color:#6B6656; letter-spacing:.04em}
+  .verdict{font-family:var(--serif); font-size:clamp(26px,4.6vw,38px); line-height:1.05; margin:4px 0 0; letter-spacing:-.01em}
+  .score-target{font-family:var(--mono); font-size:12px; color:#6B6656; word-break:break-all; margin-top:8px}
+  .stackline{margin-top:10px; display:flex; gap:6px; flex-wrap:wrap}
+  .stackchip{font-family:var(--mono); font-size:11px; background:var(--paper-2); color:#4A4638; padding:3px 9px; border-radius:20px}
+  .tally{display:flex; gap:8px; flex-wrap:wrap; margin:14px 0 0}
+  .chip{font-family:var(--mono); font-size:12px; font-weight:700; padding:6px 11px; border-radius:20px; color:#191919}
+  .chip.critical{background:var(--crit); color:#fff} .chip.high{background:var(--high)} .chip.medium{background:var(--med)} .chip.low{background:var(--low)} .chip.zero{background:var(--ok)}
+
+  .findings{background:var(--paper); color:var(--paper-ink); border:1px solid var(--paper-2); border-top:none; padding:6px 26px 22px}
+  .gated-banner{background:#20222B; color:#E7E3D6; border-left:3px solid var(--hi); border-radius:8px; padding:14px 16px; margin:16px 0 4px; font-size:14px; line-height:1.5} .gated-banner b{color:var(--hi)}
+  .find{padding:20px 0; border-bottom:1px solid var(--paper-2)} .find:last-child{border-bottom:none}
+  .find-top{display:flex; align-items:baseline; gap:12px; flex-wrap:wrap}
+  .sev{font-family:var(--mono); font-size:11px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; padding:3px 8px; border-radius:5px; color:#fff}
+  .sev.critical{background:var(--crit)} .sev.high{background:#E07B1F} .sev.medium{background:#B99114} .sev.low{background:#3E6FB0} .sev.info{background:#5A5F6E}
+  .find-title{font-family:var(--sans); font-weight:700; font-size:18px}
+  .evidence{font-family:var(--mono); font-size:13px; background:#171A24; color:#E7E3D6; padding:11px 14px; border-radius:8px; margin:12px 0 0; word-break:break-all; border-left:3px solid var(--paper-dim)}
+  .find.critical .evidence{border-left-color:var(--crit)}
+  .find.secret .evidence{border-left-color:var(--hi); background:#1a1608} .find.secret .evidence::before{content:"█ REDACTED "; color:var(--hi); font-weight:700}
+  .why{margin:12px 0 0; font-size:15px; color:#3A3B3F} .fix{margin:9px 0 0; font-size:14px; color:#5A5B5F}
+  .fix b{font-family:var(--mono); font-size:12px; color:var(--paper-ink); background:var(--paper-2); padding:1px 6px; border-radius:4px}
+
+  /* share block (dark, below the paper dossier) */
+  .share-wrap{background:var(--paper); border:1px solid var(--paper-2); border-top:none; border-radius:0 0 14px 14px; padding:22px 26px}
+  .share-h{font-family:var(--serif); font-size:24px; color:var(--paper-ink)}
+  .share-row{display:flex; gap:10px; flex-wrap:wrap; margin:14px 0 0}
+  .sbtn{border:none; font-family:var(--sans); font-weight:700; font-size:14px; padding:12px 18px; border-radius:9px; cursor:pointer; display:inline-flex; align-items:center; gap:8px}
+  .sbtn.x{background:#181400; color:var(--hi)} .sbtn.hi{background:var(--hi); color:#181400} .sbtn.ghost{background:transparent; color:var(--paper-ink); border:1px solid var(--paper-2)}
+  .share-note{font-family:var(--mono); font-size:11px; color:var(--paper-dim); margin-top:8px}
+
+  .embed{margin:18px 0 0} .embed-lbl{font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--paper-dim); margin-bottom:6px}
+  .embed-code{display:flex; gap:8px; align-items:stretch}
+  .embed-code code{flex:1; font-family:var(--mono); font-size:11.5px; background:#0C0E14; color:#C7CCDA; padding:10px 12px; border-radius:8px; overflow:auto; white-space:nowrap}
+  .embed-code button{background:var(--paper-2); border:none; border-radius:8px; padding:0 14px; font-family:var(--sans); font-weight:700; font-size:12px; cursor:pointer; color:var(--paper-ink)}
+  .badge-preview{margin-top:10px}
+
+  /* monitor email */
+  .monitor{margin:18px 0 0; background:#20222B; border:1px solid var(--line); border-radius:12px; padding:18px 20px}
+  .monitor h4{margin:0 0 4px; font-family:var(--serif); font-size:22px; color:var(--paper)}
+  .monitor p{margin:0 0 12px; font-size:14px; color:#B7BAC5}
+  .monitor-row{display:flex; gap:10px; flex-wrap:wrap}
+  .monitor-row input{flex:1 1 240px; background:var(--ink); border:1px solid var(--line); color:var(--paper); font-family:var(--mono); font-size:14px; padding:12px 14px; border-radius:9px; outline:none}
+  .monitor-row input:focus{border-color:var(--hi)}
+  .monitor-row button{background:var(--hi); color:#181400; border:none; font-family:var(--sans); font-weight:700; padding:12px 20px; border-radius:9px; cursor:pointer}
+  .monitor-ok{color:var(--ok); font-family:var(--mono); font-size:13px; margin-top:8px; display:none} .monitor-ok.show{display:block}
+
+  .scope{margin:22px 0 0; border:1px dashed var(--line); border-radius:12px; padding:16px 20px}
+  .scope h4{font-family:var(--mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--mute); margin:0 0 10px; font-weight:400}
+  .scope ul{margin:0; padding-left:18px; color:#B7BAC5; font-size:14px} .scope li{margin:4px 0}
+
+  footer{margin:44px 0 40px; padding-top:22px; border-top:1px solid var(--line); color:var(--mute); font-size:13px}
+  footer .dog{color:#C9C4B7; max-width:640px} footer .dog b{color:var(--hi)}
+  .foot-row{display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-top:14px; font-family:var(--mono); font-size:12px}
+
+  @media (prefers-reduced-motion: reduce){ .redbar,.disc{transition:none} .cursor{animation:none} .stamp{transition:none} }
+  @media (max-width:560px){ .scorecard::before{display:none} .run{flex:1 1 100%} }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="top">
+    <div class="brand">Vibe<b>Snitch</b></div>
+    <a class="gh" id="ghLink" href="https://github.com/naimterrache-a11y/vibesnitch" target="_blank" rel="noopener">★ <b>Star</b> on GitHub</a>
+  </div>
+
+  <section class="hero" id="hero">
+    <div class="eyebrow">No access to your code · scanned from outside</div>
+    <h1 class="headline">Your app is<br><em>hiding</em> something.</h1>
+    <p class="sub">Paste your app's URL. VibeSnitch scans it from the outside — like an attacker would — and hands you a <b>Snitch Score</b> plus every leaked key, dead route and missing lock. You get the dossier. Not a user complaint three weeks later.</p>
+
+    <div class="modes">
+      <button class="mode active" id="modePublic">Public scan</button>
+      <button class="mode" id="modeDeep"><span class="lock">🔒</span> Deep scan — logged in</button>
+    </div>
+
+    <div class="console">
+      <div class="console-lbl"><span>▸ target</span><span id="modeHint">public url</span></div>
+      <div class="field">
+        <input class="url-in" id="url" type="text" placeholder="https://app.your-saas.com" autocomplete="off" spellcheck="false">
+        <button class="run" id="run">Run the scan</button>
+      </div>
+      <div class="deep" id="deep">
+        <div class="deep-help">Point at your <b>app</b> (<span class="mono-hint">app.your-saas.com</span>), not the marketing site. To get inside the login: open your app logged in → DevTools → Network → click any request → copy the <b>Cookie</b> or <b>Authorization</b> header. Nothing is stored server-side.</div>
+        <input class="deep-in" id="cookie" type="text" placeholder="Cookie:  sb-xxxx-auth-token=…" autocomplete="off">
+        <input class="deep-in" id="bearer" type="text" placeholder="Bearer token:  eyJhbGciOi…" autocomplete="off">
+        <input class="deep-in wide" id="routes" type="text" placeholder="Your routes to test:  /api/ddpp, /api/export, /dashboard" autocomplete="off">
+      </div>
+      <div class="note">~30-second scan · nothing stored on our side · secrets are redacted in the report</div>
+      <div class="err" id="err"></div>
+    </div>
+
+    <div class="sig" id="sig">
+      <div class="sig-lbl">exhibit A — pulled from a real public bundle</div>
+      <div class="dossier" id="dossier">
+        <div class="stamp">EXPOSED</div>
+        <div class="doc-line"><span class="k">const</span> supabase = createClient(url, key)</div>
+        <div class="doc-line">// key = <span class="redwrap"><span class="secret">eyJhbGciOi…role":"service_role"</span><span class="redbar"></span></span></div>
+        <div class="doc-cap">A <b>service_role</b> key in your browser bundle bypasses every database rule. Anyone reading your JS can read, edit or wipe your whole database. That's an instant <b>Grade F</b>.</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="scanning" id="scanning">
+    <div class="scan-head">Interrogating the app…</div>
+    <div class="scan-target" id="scanTarget"></div>
+    <div class="term" id="term"></div>
+  </section>
+
+  <section class="report" id="report">
+    <div class="scorecard">
+      <div class="disc" id="disc">?</div>
+      <div class="score-meta">
+        <div class="score-num" id="scoreNum"></div>
+        <div class="verdict" id="repVerdict"></div>
+        <div class="score-target" id="repTarget"></div>
+        <div class="stackline" id="repStack"></div>
+        <div class="tally" id="repTally"></div>
+      </div>
+    </div>
+    <div class="findings" id="repFindings"></div>
+
+    <div class="share-wrap">
+      <div class="share-h" id="shareH">Snitch on your friends.</div>
+      <div class="share-row">
+        <button class="sbtn x" id="tweetBtn">𝕏  Tweet my grade</button>
+        <button class="sbtn hi" id="friendBtn">Snitch a friend's app</button>
+        <button class="sbtn ghost" id="copyLink">Copy dossier link</button>
+        <button class="sbtn ghost" id="rescan">Scan another</button>
+      </div>
+      <div class="share-note" id="shareNote">Anyone who opens your link sees this exact dossier — the score is baked in.</div>
+
+      <div class="embed">
+        <div class="embed-lbl">Flex your grade — drop this in your README</div>
+        <div class="embed-code"><code id="badgeCode"></code><button id="copyBadge">Copy</button></div>
+        <div class="badge-preview"><img id="badgeImg" alt="VibeSnitch grade badge" height="20"></div>
+      </div>
+
+      <form class="monitor" id="monitorForm" name="monitor" method="POST" data-netlify="true" netlify-honeypot="bot-field">
+        <input type="hidden" name="form-name" value="monitor">
+        <p hidden><input name="bot-field"></p>
+        <h4>Don't let your score rot.</h4>
+        <p>The scan's free. In return: leave your email and VibeSnitch re-checks this app on a schedule and pings you the day a route starts 500-ing or your score drops. No spam, one-click out.</p>
+        <div class="monitor-row">
+          <input type="hidden" name="site" id="monitorSite">
+          <input type="hidden" name="grade" id="monitorGrade">
+          <input type="email" name="email" id="monitorEmail" placeholder="you@yourstartup.com" required>
+          <button type="submit">Watch this app</button>
+        </div>
+        <div class="monitor-ok" id="monitorOk">On it. You'll hear from VibeSnitch when something breaks.</div>
+      </form>
+    </div>
+
+    <div class="scope">
+      <h4>What VibeSnitch did NOT check (V1 is honest)</h4>
+      <ul id="repNotScanned"></ul>
+    </div>
+  </section>
+
+  <footer>
+    <div class="dog">Built by a founder who pointed it at his own live SaaS first. On day one it found a <b>500 that had been failing silently for three weeks</b> and a data leak of thousands of records — from the outside, zero access to the code. Open-source. If it catches that on my app, it'll catch it on yours.</div>
+    <div class="foot-row">
+      <span>VibeSnitch · black-box QA for people who ship fast</span>
+      <span id="footState">idle</span>
+    </div>
+  </footer>
+</div>
+
+<script>
+(function(){
+  const $ = id => document.getElementById(id);
+  const SCAN_URL = "/.netlify/functions/scan";
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  setTimeout(()=>{ const d=$("dossier"); if(d) d.classList.add("revealed"); }, 650);
+
+  // mode switch
+  let mode="public";
+  function setMode(m){ mode=m;
+    $("modePublic").classList.toggle("active", m==="public");
+    $("modeDeep").classList.toggle("active", m==="deep");
+    $("deep").classList.toggle("open", m==="deep");
+    $("modeHint").textContent = m==="deep" ? "logged-in url + session" : "public url";
+  }
+  $("modePublic").addEventListener("click", ()=>setMode("public"));
+  $("modeDeep").addEventListener("click", ()=>setMode("deep"));
+
+  // base64url helpers
+  function bytesToB64url(b){let s="";for(let i=0;i<b.length;i++)s+=String.fromCharCode(b[i]);return btoa(s).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");}
+  function b64urlToBytes(s){s=s.replace(/-/g,"+").replace(/_/g,"/");while(s.length%4)s+="=";const bin=atob(s);const o=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)o[i]=bin.charCodeAt(i);return o;}
+  async function encodeReport(o){const b=new TextEncoder().encode(JSON.stringify(o));if(window.CompressionStream){const st=new Blob([b]).stream().pipeThrough(new CompressionStream("gzip"));const buf=new Uint8Array(await new Response(st).arrayBuffer());return "g"+bytesToB64url(buf);}return "r"+bytesToB64url(b);}
+  async function decodeReport(str){const f=str[0];const d=b64urlToBytes(str.slice(1));if(f==="g"&&window.DecompressionStream){const st=new Blob([d]).stream().pipeThrough(new DecompressionStream("gzip"));const buf=await new Response(st).arrayBuffer();return JSON.parse(new TextDecoder().decode(buf));}return JSON.parse(new TextDecoder().decode(d));}
+
+  const sleep = ms => new Promise(r=>setTimeout(r,ms));
+  const esc = s => String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+  // ---- theater ----
+  function addLine(html){ const el=document.createElement("div"); el.className="ln"; el.innerHTML=html; const t=$("term"); const cur=t.querySelector(".cursor"); if(cur) cur.remove(); t.appendChild(el); const c=document.createElement("span"); c.className="cursor"; t.appendChild(c); t.scrollTop=t.scrollHeight; }
+  function kb(n){ return (n/1024).toFixed(n>1024*10?0:1)+" KB"; }
+  async function playTheater(recon){
+    const gap = reduce ? 0 : 420;
+    $("term").innerHTML="";
+    if(!recon || !recon.reachable){
+      addLine(`▸ Resolving target … <span class="hl">no answer</span>`); await sleep(gap);
+      addLine(`<span class="dim">The app didn't respond. Compiling what we can…</span>`); await sleep(gap); return;
+    }
+    addLine(`▸ Resolving <span class="hl">${esc(recon.host)}</span> … <span class="ok">${recon.status} OK</span> <span class="dim">(${recon.ms}ms)</span>`); await sleep(gap);
+    const st = (recon.stack&&recon.stack.length) ? recon.stack.join(" · ") : "unrecognized stack";
+    addLine(`▸ Fingerprinting stack … <span class="hl">${esc(st)}</span>`); await sleep(gap+120);
+    addLine(`▸ Pulling JS bundles … <span class="hl">${recon.bundleCount}</span> files, ${kb(recon.sampledBytes)} sampled`); await sleep(gap);
+    if(recon.biggestFile) { addLine(`▸ Cracking <span class="hl">${esc(recon.biggestFile)}</span> … ${recon.biggestLines.toLocaleString()} lines`); await sleep(gap); }
+    if(recon.jwtCount) { addLine(`▸ Decoding <span class="hl">${recon.jwtCount}</span> JWT${recon.jwtCount>1?"s":""} in the bundle … checking role claims`); await sleep(gap+120); }
+    addLine(`▸ Probing security headers …`); await sleep(gap);
+    if(recon.gated) addLine(`▸ <span class="hl">Login wall detected</span> …`), await sleep(gap);
+    addLine(`▸ Knocking on routes …`); await sleep(gap);
+    addLine(`▸ Compiling dossier <span class="dim">…</span>`);
+  }
+
+  // ---- run ----
+  let busy=false;
+  async function runScan(){
+    if(busy) return;
+    const url=$("url").value.trim(); $("err").textContent="";
+    if(!url){ $("err").textContent="Paste a URL first."; $("url").focus(); return; }
+    busy=true; $("run").disabled=true; $("footState").textContent="scanning…";
+    $("hero").style.display="none"; $("report").classList.remove("on"); $("scanning").classList.add("on");
+    $("scanTarget").textContent=url; $("term").innerHTML="";
+
+    const payload={ url,
+      cookie: mode==="deep" ? ($("cookie").value.trim()||undefined) : undefined,
+      bearer: mode==="deep" ? ($("bearer").value.trim()||undefined) : undefined,
+      routes: mode==="deep" ? ($("routes").value.trim()||undefined) : undefined };
+
+    // fire both phases together — theater plays on real recon data while deep scan works
+    const deepPromise = fetch(SCAN_URL,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({...payload,phase:"deep"})}).then(r=>r.json()).catch(e=>({__err:e}));
+    let recon=null;
+    try{ recon=await fetch(SCAN_URL+"?phase=recon",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({...payload,phase:"recon"})}).then(r=>r.json()); }catch(e){}
+
+    const theater = playTheater(recon);
+    const minShow = sleep(reduce?200:900);
+    const data = await deepPromise;
+    await theater; await minShow;
+
+    busy=false; $("run").disabled=false;
+    if(!data || data.__err || data.ok===false){
+      $("scanning").classList.remove("on"); $("hero").style.display="";
+      $("err").textContent=(data&&data.error)||"Scan failed to reach the server. Try again."; $("footState").textContent="error"; return;
+    }
+    await showReport(data.report, true);
+    $("footState").textContent="done";
+  }
+
+  // ---- report ----
+  async function showReport(rep, updateHash){
+    $("hero").style.display="none"; $("scanning").classList.remove("on"); $("report").classList.add("on");
+    const grade=rep.grade||"?"; const color=getComputedStyle(document.documentElement).getPropertyValue("--"+grade).trim()||"#5A5F6E";
+    const disc=$("disc"); disc.textContent=grade; disc.style.background=color; disc.classList.remove("in");
+    $("scoreNum").textContent=`SNITCH SCORE · ${rep.score}/100`;
+    $("repVerdict").textContent=rep.gradeBlurb||rep.verdict;
+    $("repTarget").textContent=rep.target;
+
+    const sc=$("repStack"); sc.innerHTML="";
+    if(rep.stack&&rep.stack.length){ sc.innerHTML=`<span class="stackchip">detected:</span>`+rep.stack.map(s=>`<span class="stackchip">${esc(s)}</span>`).join(""); }
+
+    const c=rep.counts||{}; const tally=[];
+    [["critical","critical"],["high","high"],["medium","medium"],["low","low"]].forEach(([k,cls])=>{ if(c[k]) tally.push(`<span class="chip ${cls}">${c[k]} ${k}</span>`); });
+    if(!rep.total) tally.push(`<span class="chip zero">clean</span>`);
+    $("repTally").innerHTML=tally.join("");
+
+    // findings
+    const fh=$("repFindings"); fh.innerHTML="";
+    if(rep.gated && !rep.hadAuth){ const b=document.createElement("div"); b.className="gated-banner"; b.innerHTML=`<b>This app is behind a login.</b> Below is everything public — bundle, headers, secrets, which is where the worst leaks hide anyway. To test what's <i>inside</i>, switch to <b>🔒 Deep scan</b> and paste your session.`; fh.appendChild(b); }
+    if(!rep.findings||!rep.findings.length){
+      fh.innerHTML+=`<div class="find"><div class="find-title">Nothing incriminating on the surface.</div><div class="why">The public checks came back clean — the good kind of boring. Deeper checks (console errors, authed flows, RLS) land in V1.5.</div></div>`;
+    } else {
+      for(const f of rep.findings){ const el=document.createElement("div"); el.className="find "+f.sev+(f.secret?" secret":"");
+        el.innerHTML=`<div class="find-top"><span class="sev ${f.sev}">${f.sev}</span><span class="find-title">${esc(f.title)}</span></div><div class="evidence">${esc(f.evidence)}</div><div class="why">${esc(f.why)}</div><div class="fix"><b>fix</b> ${esc(f.fix)}</div>`;
+        fh.appendChild(el); }
+    }
+    const ns=$("repNotScanned"); ns.innerHTML=""; (rep.notScanned||[]).forEach(t=>{ const li=document.createElement("li"); li.textContent=t; ns.appendChild(li); });
+
+    // share block wiring
+    let host=""; try{ host=new URL(rep.target).hostname; }catch{ host=rep.target; }
+    $("shareH").textContent = rep.grade==="A" ? "Flex it. Then snitch on your friends." : "Misery loves company. Snitch on your friends.";
+    const origin=location.origin;
+    const badgeMd=`[![VibeSnitch](${origin}/.netlify/functions/badge?g=${grade})](${origin})`;
+    $("badgeCode").textContent=badgeMd;
+    $("badgeImg").src=`/.netlify/functions/badge?g=${grade}`;
+    $("monitorSite").value=rep.target; $("monitorGrade").value=grade;
+    window.__rep=rep; window.__host=host; window.__grade=grade;
+
+    // build share hash
+    if(updateHash){ try{ location.hash="r="+await encodeReport(rep); }catch(e){} }
+
+    // reveal disc
+    await sleep(reduce?0:120); disc.classList.add("in");
+    // count-up
+    if(!reduce){ const target=rep.score; let n=0; const step=Math.max(1,Math.round(target/24)); const iv=setInterval(()=>{ n=Math.min(target,n+step); $("scoreNum").textContent=`SNITCH SCORE · ${n}/100`; if(n>=target) clearInterval(iv); },22); }
+    window.scrollTo({top:0,behavior:"smooth"});
+  }
+
+  // share actions
+  $("tweetBtn").addEventListener("click", ()=>{
+    const g=window.__grade, rep=window.__rep, host=window.__host;
+    const crit=(rep.counts&&rep.counts.critical)||0;
+    let txt = g==="A"||g==="B" ? `My app just scored a Grade ${g} on VibeSnitch 🕵️ Black-box scan, no access to my code. Think yours can beat it?`
+      : `VibeSnitch gave my app a Grade ${g} 💀 ${crit?crit+" critical leak"+(crit>1?"s":"")+" ":""}found from the outside in 30s. Scan yours before an attacker does:`;
+    const u=`https://twitter.com/intent/tweet?text=${encodeURIComponent(txt)}&url=${encodeURIComponent(location.href)}`;
+    window.open(u,"_blank","noopener");
+  });
+  $("friendBtn").addEventListener("click", async ()=>{
+    const txt=`Bet your app is leaking something. VibeSnitch scans it from the outside in 30s and grades it 🕵️ → ${location.origin}`;
+    try{ await navigator.clipboard.writeText(txt); $("friendBtn").textContent="Copied — go paste it ✓"; setTimeout(()=>$("friendBtn").textContent="Snitch a friend's app",1800); }
+    catch{ $("shareNote").textContent="Copy failed — share "+location.origin; }
+  });
+  $("copyLink").addEventListener("click", async ()=>{ try{ await navigator.clipboard.writeText(location.href); $("copyLink").textContent="Copied ✓"; setTimeout(()=>$("copyLink").textContent="Copy dossier link",1500);}catch{ $("shareNote").textContent="Grab the URL from the address bar."; } });
+  $("copyBadge").addEventListener("click", async ()=>{ try{ await navigator.clipboard.writeText($("badgeCode").textContent); $("copyBadge").textContent="✓"; setTimeout(()=>$("copyBadge").textContent="Copy",1400);}catch{} });
+  $("rescan").addEventListener("click", ()=>{ history.replaceState(null,"",location.pathname); $("report").classList.remove("on"); $("hero").style.display=""; $("url").focus(); });
+
+  // monitor form (Netlify Forms, AJAX so we stay on page)
+  $("monitorForm").addEventListener("submit", async (e)=>{
+    e.preventDefault();
+    const body=new URLSearchParams(new FormData($("monitorForm"))).toString();
+    try{ await fetch("/",{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},body}); $("monitorOk").classList.add("show"); $("monitorEmail").value=""; }
+    catch{ $("monitorOk").textContent="Couldn't reach the server — try again."; $("monitorOk").classList.add("show"); }
+  });
+
+  $("run").addEventListener("click", runScan);
+  ["url","cookie","bearer","routes"].forEach(id=>$(id).addEventListener("keydown",e=>{ if(e.key==="Enter") runScan(); }));
+
+  // open a shared dossier
+  (async function(){ const m=location.hash.match(/r=([^&]+)/); if(!m) return; try{ const rep=await decodeReport(m[1]); await showReport(rep,false); $("footState").textContent="shared dossier"; }catch(e){} })();
+})();
+</script>
+</body>
+</html>
