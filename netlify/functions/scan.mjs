@@ -1,6 +1,6 @@
 // VibeSnitch scan (Netlify Functions v2). Native fetch only — zero npm deps.
 // Two phases: ?phase=recon (fast facts for the live theater) and deep (full scan + grade).
-import { findSecrets, checkHeaders, extractAssets, redact, SEV_ORDER, fingerprintStack, computeGrade } from "./lib/detectors.mjs";
+import { findSecrets, checkHeaders, extractAssets, redact, SEV_ORDER, fingerprintStack, computeGrade, findAnonKey, extractApiRoutes } from "./lib/detectors.mjs";
 
 const LIMITS = {
   // maxBytes 5MB: Vite bundles routinely exceed 2.5MB and were getting truncated.
@@ -65,11 +65,17 @@ export default async (req) => {
     }
     // Fingerprint against the real bundle JS too — Supabase/Stripe/etc. often only appear in the JS, not the HTML. Reuses the txt we already fetched (no extra request).
     const stack = fingerprintStack(html, H, bundleTxt);
+    // Expose the Supabase project URL + anon key so the front-end can log the user in client-side (password never touches our server).
+    const hay = html + "\n" + bundleTxt;
+    const supMatch = hay.match(/https:\/\/[a-z0-9]+\.supabase\.co/);
+    const supabaseUrl = supMatch ? supMatch[0] : "";
+    const supabaseAnonKey = findAnonKey(hay);
     const gated = (AUTH_URL_RE.test(finalUrl) && !AUTH_URL_RE.test(target)) || looksLikeLoginHtml(html);
     return json({
       ok: true, phase: "recon", reachable: true, target, finalUrl,
       status: res.status, ms: Date.now() - started, host: new URL(finalUrl).hostname,
       stack, bundleCount: jsUrls.length, sampledBytes, biggestFile, biggestLines, jwtCount, gated,
+      supabaseUrl, supabaseAnonKey,
     });
   }
 
@@ -106,15 +112,25 @@ export default async (req) => {
   for (const h of secretHits) { const key = h.kind + "|" + (h.sample || ""); if (seen.has(key)) { seen.get(key).count++; continue; } seen.set(key, { ...h, count: 1 }); }
   for (const h of seen.values()) push({ sev: h.sev, title: `Exposed ${h.kind}`, evidence: `${redact(h.sample || h.kind)}  ·  found in ${h.source}${h.count > 1 ? ` (+${h.count - 1} more)` : ""}`, source: h.source, why: h.why, fix: h.fix, secret: true });
 
-  const routeTargets = [...userRoutes.map(p => ({ url: absOn(finalUrl, p), user: true })), ...LIMITS.probePaths.map(p => ({ url: absOn(finalUrl, p), user: false }))].filter(x => x.url);
+  // Auto-discover API routes baked into the bundle JS and probe them alongside the user's manual routes.
+  // Merge manual + auto, dedup on the absolute URL, cap the user-side list at 15. Auto routes are marked so
+  // we only surface their real signal (5xx) and stay quiet on the expected 401/403/404 of protected endpoints.
+  const autoRoutes = extractApiRoutes(stackJs);
+  const userRouteObjs = []; const seenRouteUrl = new Set();
+  for (const p of [...userRoutes.map(x => ({ p: x, auto: false })), ...autoRoutes.map(x => ({ p: x, auto: true }))]) {
+    const u = absOn(finalUrl, p.p); if (!u || seenRouteUrl.has(u)) continue;
+    seenRouteUrl.add(u); userRouteObjs.push({ url: u, user: true, auto: p.auto });
+    if (userRouteObjs.length >= 15) break;
+  }
+  const routeTargets = [...userRouteObjs, ...LIMITS.probePaths.map(p => ({ url: absOn(finalUrl, p), user: false, auto: false }))].filter(x => x.url);
   const routeResults = await Promise.allSettled(routeTargets.map(async (x) => { const r = await grab(x.url, { headers: authHeaders }); return { ...x, status: r.status, land: r.url }; }));
-  let authRejections = 0;
+  let authRejections = 0; // manual routes only — drives the "your routes need a login" messaging below
   for (const r of routeResults) {
     if (r.status !== "fulfilled") continue;
-    const { url: u, user, status, land } = r.value; const path = safePath(u);
+    const { url: u, user, auto, status, land } = r.value; const path = safePath(u);
     if (status >= 500) push({ sev: "critical", title: `${path} returns ${status}`, evidence: `GET ${path} → ${status}`, source: "http", why: "This route is crashing with a server error — exactly the kind of silent 500 that runs for weeks unnoticed.", fix: "Open the server logs for this route and fix the exception." });
-    else if (user && (status === 401 || status === 403 || AUTH_URL_RE.test(land || ""))) authRejections++;
-    else if (user && status === 404) push({ sev: "medium", title: `${path} not found (404)`, evidence: `GET ${path} → 404`, source: "http", why: "You asked to test this route and it doesn't exist.", fix: "Check the path." });
+    else if (user && (status === 401 || status === 403 || AUTH_URL_RE.test(land || ""))) { if (!auto) authRejections++; } // auto 401/403 counted-and-ignored (protected endpoint = expected)
+    else if (user && !auto && status === 404) push({ sev: "medium", title: `${path} not found (404)`, evidence: `GET ${path} → 404`, source: "http", why: "You asked to test this route and it doesn't exist.", fix: "Check the path." });
   }
   checksRun.push("route-tests");
   if (userRoutes.length && authRejections === userRoutes.length && !hasAuth) push({ sev: "info", title: "Your routes need a login — no session was provided", evidence: `${authRejections} route(s) returned 401/403 or bounced to login`, source: "auth", why: "The routes you listed are protected. Without a session, VibeSnitch can only knock on the door.", fix: "Add your Cookie or Bearer token and re-scan." });

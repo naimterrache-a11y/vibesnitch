@@ -97,6 +97,50 @@ function scanJwts(text) {
   return out;
 }
 
+// Find the Supabase ANON key: the JWT whose decoded payload has role==="anon".
+// Public by design (the browser needs it to log a user in) — same regex as scanJwts.
+// Returns the first anon token, or "" (never returns a service_role token).
+export function findAnonKey(text) {
+  const re = /\beyJ[A-Za-z0-9_\-]{10,}\.eyJ[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}\b/g;
+  let m;
+  while ((m = re.exec(text || ""))) {
+    const tok = m[0];
+    const payload = b64urlDecode(tok.split(".")[1] || "");
+    let role = "";
+    try { role = (JSON.parse(payload) || {}).role || ""; } catch { /* not a role JWT */ }
+    if (role === "anon") return tok;
+  }
+  return "";
+}
+
+// Auto-discover API route literals baked into the bundle JS (e.g. "/api/ddpp", "/rest/v1/foo").
+// Strips dynamic segments (/:id, /${...}), dedups, caps at 15. The deep scan probes these so it can
+// test endpoints it would otherwise never know existed.
+export function extractApiRoutes(text) {
+  const t = text || "";
+  const out = [];
+  const seen = new Set();
+  const patterns = [
+    /["'`](\/api\/[A-Za-z0-9_\-\/]+)["'`]/g,
+    /["'`](\/(?:rest|auth|functions)\/v1\/[A-Za-z0-9_\-\/]+)["'`]/g,
+  ];
+  for (const re of patterns) {
+    let m;
+    re.lastIndex = 0;
+    while ((m = re.exec(t))) {
+      const p = m[1]
+        .replace(/\/:[A-Za-z0-9_\-]+/g, "")   // drop /:id style params
+        .replace(/\/\$\{[^}]*\}/g, "")         // drop /${...} template segments
+        .replace(/\/+$/, "");                   // trailing slash
+      if (!p || seen.has(p)) continue;
+      seen.add(p);
+      out.push(p);
+      if (out.length >= 15) return out;
+    }
+  }
+  return out;
+}
+
 // Run all secret detectors over a blob of text (html or js). Returns array of raw findings.
 export function findSecrets(text, sourceLabel) {
   const findings = [];

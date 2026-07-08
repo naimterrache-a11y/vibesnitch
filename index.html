@@ -62,6 +62,8 @@
   .deep-help{flex:1 1 100%; font-family:var(--sans); font-size:13px; color:var(--paper-dim); line-height:1.5} .deep-help b{color:#CFCABD} .mono-hint{font-family:var(--mono); color:var(--hi); font-size:12px}
   .deep-in{flex:1 1 240px; background:var(--ink); border:1px solid var(--line); color:var(--paper); font-family:var(--mono); font-size:13px; padding:12px 14px; border-radius:9px; outline:none}
   .deep-in:focus{border-color:var(--hi)} .deep-in.wide{flex:1 1 100%}
+  .adv-toggle{flex:1 1 100%; background:none; border:none; color:var(--hi); font-family:var(--mono); font-size:12px; text-align:left; cursor:pointer; padding:2px 0; opacity:.85} .adv-toggle:hover{opacity:1; text-decoration:underline}
+  .adv{display:none; flex:1 1 100%; flex-wrap:wrap; gap:10px} .adv.open{display:flex}
   .note{font-family:var(--mono); font-size:11px; color:var(--mute); margin-top:12px}
   .err{color:var(--crit); font-family:var(--mono); font-size:13px; margin:12px 2px 0; min-height:1em}
 
@@ -176,10 +178,16 @@
         <button class="run" id="run">Run the scan</button>
       </div>
       <div class="deep" id="deep">
-        <div class="deep-help">Point at your <b>app</b> (<span class="mono-hint">app.your-saas.com</span>), not the marketing site. To get inside the login: open your app logged in → DevTools → Network → click any request → copy the <b>Cookie</b> or <b>Authorization</b> header. Nothing is stored server-side.</div>
-        <input class="deep-in" id="cookie" type="text" placeholder="Cookie:  sb-xxxx-auth-token=…" autocomplete="off">
-        <input class="deep-in" id="bearer" type="text" placeholder="Bearer token:  eyJhbGciOi…" autocomplete="off">
-        <input class="deep-in wide" id="routes" type="text" placeholder="Your routes to test:  /api/ddpp, /api/export, /dashboard" autocomplete="off">
+        <div class="deep-help">Enter a test account and VibeSnitch logs in for you — no DevTools. Your password stays in your browser; only a temporary session token is sent to the scan. <span class="mono-hint">(Works with Supabase email/password apps.)</span></div>
+        <input class="deep-in" id="loginEmail" type="email" placeholder="test account email" autocomplete="off" spellcheck="false">
+        <input class="deep-in" id="loginPass" type="password" placeholder="password" autocomplete="off">
+        <button type="button" class="adv-toggle" id="advToggle">Advanced: paste a token instead ▾</button>
+        <div class="adv" id="adv">
+          <div class="deep-help">Open your app logged in → DevTools → Network → click any request → copy the <b>Cookie</b> or <b>Authorization</b> header. Nothing is stored server-side.</div>
+          <input class="deep-in" id="cookie" type="text" placeholder="Cookie:  sb-xxxx-auth-token=…" autocomplete="off">
+          <input class="deep-in" id="bearer" type="text" placeholder="Bearer token:  eyJhbGciOi…" autocomplete="off">
+          <input class="deep-in wide" id="routes" type="text" placeholder="Extra routes to test (optional):  /api/export, /dashboard" autocomplete="off">
+        </div>
       </div>
       <div class="note">~30-second scan · nothing stored on our side · secrets are redacted in the report</div>
       <div class="err" id="err"></div>
@@ -280,6 +288,12 @@
   $("modePublic").addEventListener("click", ()=>setMode("public"));
   $("modeDeep").addEventListener("click", ()=>setMode("deep"));
 
+  // Advanced (paste-a-token) sub-block, collapsed by default
+  $("advToggle").addEventListener("click", ()=>{
+    const open = $("adv").classList.toggle("open");
+    $("advToggle").textContent = "Advanced: paste a token instead " + (open ? "▴" : "▾");
+  });
+
   // base64url helpers
   function bytesToB64url(b){let s="";for(let i=0;i<b.length;i++)s+=String.fromCharCode(b[i]);return btoa(s).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");}
   function b64urlToBytes(s){s=s.replace(/-/g,"+").replace(/_/g,"/");while(s.length%4)s+="=";const bin=atob(s);const o=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)o[i]=bin.charCodeAt(i);return o;}
@@ -317,7 +331,8 @@
   // ---- theater ----
   function addLine(html){ const el=document.createElement("div"); el.className="ln"; el.innerHTML=html; const t=$("term"); const cur=t.querySelector(".cursor"); if(cur) cur.remove(); t.appendChild(el); const c=document.createElement("span"); c.className="cursor"; t.appendChild(c); t.scrollTop=t.scrollHeight; }
   function kb(n){ return (n/1024).toFixed(n>1024*10?0:1)+" KB"; }
-  async function playTheater(recon){
+  async function playTheater(recon, opts){
+    opts = opts || {};
     const gap = reduce ? 0 : 420;
     $("term").innerHTML="";
     if(!recon || !recon.reachable){
@@ -325,6 +340,7 @@
       addLine(`<span class="dim">The app didn't respond. Compiling what we can…</span>`); await sleep(gap); return;
     }
     addLine(`▸ Resolving <span class="hl">${esc(recon.host)}</span> … <span class="ok">${recon.status} OK</span> <span class="dim">(${recon.ms}ms)</span>`); await sleep(gap);
+    if(opts.loginAs){ addLine(`▸ Logging in as <span class="hl">${esc(opts.loginAs)}</span> … <span class="ok">✓ session acquired</span>`); await sleep(gap); }
     const st = (recon.stack&&recon.stack.length) ? recon.stack.join(" · ") : "unrecognized stack";
     addLine(`▸ Fingerprinting stack … <span class="hl">${esc(st)}</span>`); await sleep(gap+120);
     addLine(`▸ Pulling JS bundles … <span class="hl">${recon.bundleCount}</span> files, ${kb(recon.sampledBytes)} sampled`); await sleep(gap);
@@ -338,36 +354,74 @@
 
   // ---- run ----
   let busy=false;
+  const wakeLine = ()=>addLine(`▸ <span class="dim">Waking up the scanner…</span>`);
+  const postJSON = (body, q="", onSlow) => fetchJSONWithRetry(SCAN_URL+q,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)}, 3, onSlow);
+
   async function runScan(){
     if(busy) return;
     const url=$("url").value.trim(); $("err").textContent="";
     if(!url){ $("err").textContent="Paste a URL first."; $("url").focus(); return; }
+
+    // Deep inputs. Password path takes priority; token path is the Advanced fallback.
+    const email  = mode==="deep" ? $("loginEmail").value.trim() : "";
+    const pass   = mode==="deep" ? $("loginPass").value : "";
+    const mCookie= mode==="deep" ? $("cookie").value.trim() : "";
+    const mBearer= mode==="deep" ? $("bearer").value.trim() : "";
+    const mRoutes= mode==="deep" ? $("routes").value.trim() : "";
+    const usePassword = mode==="deep" && email && pass;
+    const useToken    = mode==="deep" && !usePassword && (mCookie || mBearer);
+
     busy=true; $("run").disabled=true; $("footState").textContent="scanning…";
     $("hero").style.display="none"; $("report").classList.remove("on"); $("scanning").classList.add("on");
     $("scanTarget").textContent=url; $("term").innerHTML="";
 
-    const payload={ url,
-      cookie: mode==="deep" ? ($("cookie").value.trim()||undefined) : undefined,
-      bearer: mode==="deep" ? ($("bearer").value.trim()||undefined) : undefined,
-      routes: mode==="deep" ? ($("routes").value.trim()||undefined) : undefined };
-
-    // fire both phases together — theater plays on real recon data while deep scan works
-    const deepPromise = fetchJSONWithRetry(SCAN_URL,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({...payload,phase:"deep"})}).catch(e=>({__err:e}));
-    let recon=null;
-    try{ recon=await fetchJSONWithRetry(SCAN_URL+"?phase=recon",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({...payload,phase:"recon"})}, 3, ()=>addLine(`▸ <span class="dim">Waking up the scanner…</span>`)); }catch(e){}
-
-    const theater = playTheater(recon);
-    const minShow = sleep(reduce?200:900);
-    const data = await deepPromise;
-    await theater; await minShow;
-
-    busy=false; $("run").disabled=false;
-    if(!data || data.__err || data.ok===false){
-      $("scanning").classList.remove("on"); $("hero").style.display="";
-      $("err").textContent=(data&&data.error)||"Scan failed to reach the server. Try again."; $("footState").textContent="error"; return;
+    const fail = (msg)=>{ busy=false; $("run").disabled=false; $("scanning").classList.remove("on"); $("hero").style.display=""; $("err").textContent=msg; $("footState").textContent="error"; };
+    async function finish(data, theaterOpts){
+      const theater = playTheater(recon, theaterOpts);
+      const minShow = sleep(reduce?200:900);
+      const resolved = await data;
+      await theater; await minShow;
+      busy=false; $("run").disabled=false;
+      if(!resolved || resolved.__err || resolved.ok===false){
+        $("scanning").classList.remove("on"); $("hero").style.display="";
+        $("err").textContent=(resolved&&resolved.error)||"Scan failed to reach the server. Try again."; $("footState").textContent="error"; return;
+      }
+      await showReport(resolved.report, true); $("footState").textContent="done";
     }
-    await showReport(data.report, true);
-    $("footState").textContent="done";
+
+    let recon=null;
+
+    // ---- Deep via email/password: recon → client-side Supabase login → deep (sequential) ----
+    if(usePassword){
+      try{ recon=await postJSON({url,phase:"recon"}, "?phase=recon", wakeLine); }catch(e){}
+      const supabaseUrl = recon && recon.supabaseUrl;
+      const anonKey = recon && recon.supabaseAnonKey;
+      if(!supabaseUrl || !anonKey){ return fail("This app isn't a Supabase email/password app — use Advanced → paste a token."); }
+      let bearer="";
+      try{
+        // Login happens IN THE BROWSER. The password never leaves the client — only the resulting token is sent to the scan.
+        const lr = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=password`, {
+          method:"POST",
+          headers:{ "apikey":anonKey, "authorization":"Bearer "+anonKey, "content-type":"application/json" },
+          body: JSON.stringify({ email, password: pass })
+        });
+        let ld={}; try{ ld = await lr.json(); }catch{}
+        if(lr.status===200 && ld && ld.access_token) bearer = ld.access_token;
+      }catch(e){}
+      if(!bearer){ return fail("Couldn't log in — check the email/password, or this app doesn't use Supabase email/password auth. Try Advanced → paste a token."); }
+
+      const deepBody = { url, bearer, phase:"deep" };
+      if(mRoutes) deepBody.routes = mRoutes;   // password never goes in here — only the bearer
+      const deepPromise = postJSON(deepBody).catch(e=>({__err:e}));
+      return finish(deepPromise, { loginAs: email });
+    }
+
+    // ---- Token (Advanced) or public: recon + deep in parallel ----
+    const payload = { url };
+    if(useToken){ if(mCookie) payload.cookie=mCookie; if(mBearer) payload.bearer=mBearer; if(mRoutes) payload.routes=mRoutes; }
+    const deepPromise = postJSON({...payload, phase:"deep"}).catch(e=>({__err:e}));
+    try{ recon=await postJSON({...payload, phase:"recon"}, "?phase=recon", wakeLine); }catch(e){}
+    return finish(deepPromise);
   }
 
   // ---- report ----

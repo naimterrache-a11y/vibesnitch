@@ -1,4 +1,4 @@
-import { findSecrets, checkHeaders, extractAssets, redact } from '../netlify/functions/lib/detectors.mjs';
+import { findSecrets, checkHeaders, extractAssets, redact, extractApiRoutes, findAnonKey } from '../netlify/functions/lib/detectors.mjs';
 
 // Build a fake service_role JWT and an anon JWT (fake signature is fine, we only decode payload)
 const b64url = (o) => Buffer.from(JSON.stringify(o)).toString('base64').replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
@@ -34,6 +34,11 @@ assert(kinds.includes('GitHub token'), 'flags ghp_');
 assert(kinds.includes('Supabase service_role variable'), 'flags service_role var name');
 // ensure anon jwt truly not present as a service_role finding
 assert(!found.some(f=>f.sample===anonJwt), 'anon JWT absent from findings');
+
+// ---- route auto-discovery + anon-key extraction ----
+assert(extractApiRoutes(`const u="/api/ddpp"`).includes('/api/ddpp'), 'extractApiRoutes finds /api/ddpp');
+const anon = findAnonKey(`${serviceJwt} ${anonJwt}`);
+assert(anon === anonJwt && anon !== serviceJwt, 'findAnonKey returns anon JWT, not service_role');
 
 console.log('\n=== HEADERS ===');
 const h = checkHeaders({ 'strict-transport-security':'max-age=1' }); // only HSTS present
