@@ -1,4 +1,4 @@
-import { findSecrets, checkHeaders, extractAssets, redact } from '/home/claude/vibesnitch/netlify/functions/lib/detectors.mjs';
+import { findSecrets, checkHeaders, extractAssets, redact } from '../netlify/functions/lib/detectors.mjs';
 
 // Build a fake service_role JWT and an anon JWT (fake signature is fine, we only decode payload)
 const b64url = (o) => Buffer.from(JSON.stringify(o)).toString('base64').replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
