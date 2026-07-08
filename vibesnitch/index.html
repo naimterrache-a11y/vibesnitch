@@ -289,6 +289,31 @@
   const sleep = ms => new Promise(r=>setTimeout(r,ms));
   const esc = s => String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
+  // Cold-start resilient fetch: Netlify functions can 503 (or return an empty body) on a cold invoke.
+  // Retry on 5xx / empty / invalid JSON with a simple backoff (700ms, 1400ms). onFirstSlow fires if the
+  // very first attempt is still pending after 1.5s, so a cold-start wait looks intentional in the theater.
+  async function fetchJSONWithRetry(url, opts, tries=3, onFirstSlow){
+    let lastErr;
+    for(let attempt=0; attempt<tries; attempt++){
+      let slowTimer=null;
+      if(attempt===0 && onFirstSlow) slowTimer=setTimeout(onFirstSlow, 1500);
+      try{
+        const res = await fetch(url, opts);
+        if(res.status >= 500) throw new Error("server "+res.status);
+        const txt = await res.text();
+        if(!txt.trim()) throw new Error("empty body");
+        let data; try{ data = JSON.parse(txt); }catch{ throw new Error("invalid json"); }
+        return data;
+      }catch(e){
+        lastErr=e;
+        if(attempt < tries-1) await sleep(700*(attempt+1));  // 700ms, then 1400ms
+      }finally{
+        if(slowTimer) clearTimeout(slowTimer);
+      }
+    }
+    throw lastErr || new Error("request failed");
+  }
+
   // ---- theater ----
   function addLine(html){ const el=document.createElement("div"); el.className="ln"; el.innerHTML=html; const t=$("term"); const cur=t.querySelector(".cursor"); if(cur) cur.remove(); t.appendChild(el); const c=document.createElement("span"); c.className="cursor"; t.appendChild(c); t.scrollTop=t.scrollHeight; }
   function kb(n){ return (n/1024).toFixed(n>1024*10?0:1)+" KB"; }
@@ -327,9 +352,9 @@
       routes: mode==="deep" ? ($("routes").value.trim()||undefined) : undefined };
 
     // fire both phases together — theater plays on real recon data while deep scan works
-    const deepPromise = fetch(SCAN_URL,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({...payload,phase:"deep"})}).then(r=>r.json()).catch(e=>({__err:e}));
+    const deepPromise = fetchJSONWithRetry(SCAN_URL,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({...payload,phase:"deep"})}).catch(e=>({__err:e}));
     let recon=null;
-    try{ recon=await fetch(SCAN_URL+"?phase=recon",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({...payload,phase:"recon"})}).then(r=>r.json()); }catch(e){}
+    try{ recon=await fetchJSONWithRetry(SCAN_URL+"?phase=recon",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({...payload,phase:"recon"})}, 3, ()=>addLine(`▸ <span class="dim">Waking up the scanner…</span>`)); }catch(e){}
 
     const theater = playTheater(recon);
     const minShow = sleep(reduce?200:900);

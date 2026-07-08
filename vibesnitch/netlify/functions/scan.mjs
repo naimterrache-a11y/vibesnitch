@@ -3,7 +3,9 @@
 import { findSecrets, checkHeaders, extractAssets, redact, SEV_ORDER, fingerprintStack, computeGrade } from "./lib/detectors.mjs";
 
 const LIMITS = {
-  perFetchMs: 6000, maxScripts: 12, maxBytes: 2_500_000, maxLinks: 12, maxUserRoutes: 12,
+  // maxBytes 5MB: Vite bundles routinely exceed 2.5MB and were getting truncated.
+  // maxScripts trimmed 12→8 so the larger per-bundle cap doesn't blow the function timeout. perFetchMs unchanged.
+  perFetchMs: 6000, maxScripts: 8, maxBytes: 5_000_000, maxLinks: 12, maxUserRoutes: 12,
   probePaths: ["/login", "/signup", "/api/health", "/api", "/admin"],
 };
 const UA = "VibeSnitch/1.0 (+https://vibesnitch.netlify.app) black-box scanner";
@@ -55,12 +57,14 @@ export default async (req) => {
     const jsUrls = scripts.filter(s => /\.(js|mjs|cjs)(\?|$)/i.test(s) || s.includes("/_next/") || s.includes("/assets/"));
     // fetch the first real bundle to get honest line/byte/jwt counts
     let biggestFile = "", biggestLines = 0, sampledBytes = html.length, jwtCount = countJwts(html);
+    let bundleTxt = "";
     const first = jsUrls[0];
     if (first) {
-      try { const r = await grab(first); const txt = await readCapped(r); biggestFile = new URL(first).pathname.split("/").pop() || first; biggestLines = (txt.match(/\n/g) || []).length + 1; sampledBytes += txt.length; jwtCount += countJwts(txt); }
+      try { const r = await grab(first); const txt = await readCapped(r); bundleTxt = txt; biggestFile = new URL(first).pathname.split("/").pop() || first; biggestLines = (txt.match(/\n/g) || []).length + 1; sampledBytes += txt.length; jwtCount += countJwts(txt); }
       catch {}
     }
-    const stack = fingerprintStack(html, H, "");
+    // Fingerprint against the real bundle JS too — Supabase/Stripe/etc. often only appear in the JS, not the HTML. Reuses the txt we already fetched (no extra request).
+    const stack = fingerprintStack(html, H, bundleTxt);
     const gated = (AUTH_URL_RE.test(finalUrl) && !AUTH_URL_RE.test(target)) || looksLikeLoginHtml(html);
     return json({
       ok: true, phase: "recon", reachable: true, target, finalUrl,
